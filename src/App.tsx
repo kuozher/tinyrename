@@ -1,0 +1,805 @@
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import { getCurrentWebview } from '@tauri-apps/api/webview';
+import {
+  FileItem,
+  RenameOperation,
+  RenameHistoryItem,
+  BatchRenameResult,
+  AppConfig,
+  Language,
+  Theme,
+  CaseMode,
+} from './types';
+import { computeRenamePreviews } from './lib/renameEngine';
+import { t } from './lib/i18n';
+import { HelpPopover } from './components/HelpPopover';
+import {
+  FolderUp,
+  X,
+  Languages,
+  AlertTriangle,
+  CheckSquare,
+  Square,
+  Trash2,
+  ChevronDown,
+  Plus,
+  Minus,
+  ArrowUp,
+  ArrowDown,
+  Calendar,
+} from 'lucide-react';
+import './App.css';
+
+interface ToastState {
+  message: string;
+  canUndo: boolean;
+}
+
+export function App() {
+  const [files, setFiles] = useState<FileItem[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // Rule state
+  const [matchPattern, setMatchPattern] = useState<string>('');
+  const [isRegex, setIsRegex] = useState<boolean>(false);
+  const [renameTemplate, setRenameTemplate] = useState<string>('$name');
+  const [startFrom, setStartFrom] = useState<number>(1);
+  const [step, setStep] = useState<number>(1);
+  const [caseMode, setCaseMode] = useState<CaseMode>('none');
+
+  // App UI state
+  const [isHelpOpen, setIsHelpOpen] = useState<boolean>(false);
+  const [isDraggingOver, setIsDraggingOver] = useState<boolean>(false);
+  const [toastState, setToastState] = useState<ToastState | null>(null);
+  const [isRenaming, setIsRenaming] = useState<boolean>(false);
+  const [lastRenameHistory, setLastRenameHistory] = useState<RenameHistoryItem[] | null>(null);
+
+  // Config state
+  const [config, setConfig] = useState<AppConfig>({
+    language: 'zh-TW',
+    theme: 'system',
+  });
+
+  const renameInputRef = useRef<HTMLInputElement>(null);
+  const toastTimeoutRef = useRef<number | null>(null);
+
+  // 1. Initial configuration and files
+  useEffect(() => {
+    // Load persisted configuration
+    invoke<AppConfig>('load_config')
+      .then((cfg) => {
+        if (cfg) {
+          setConfig(cfg);
+        }
+      })
+      .catch((err) => console.error('Failed to load config:', err));
+
+    // Load initial files from CLI args (e.g. right-click menu)
+    invoke<FileItem[]>('get_initial_files')
+      .then((initialFiles) => {
+        if (initialFiles && initialFiles.length > 0) {
+          setFiles(initialFiles);
+          setSelectedIds(new Set(initialFiles.map((f) => f.id)));
+        }
+      })
+      .catch((err) => console.error('Failed to get initial files:', err));
+  }, []);
+
+  // 2. Setup theme
+  useEffect(() => {
+    const root = document.documentElement;
+    if (config.theme === 'system') {
+      const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      root.setAttribute('data-theme', isDark ? 'dark' : 'light');
+    } else {
+      root.setAttribute('data-theme', config.theme);
+    }
+  }, [config.theme]);
+
+  // 3. Listen to system dark mode changes if on system theme
+  useEffect(() => {
+    if (config.theme !== 'system') return;
+
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleChange = (e: MediaQueryListEvent) => {
+      document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');
+    };
+
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, [config.theme]);
+
+  // 4. Update Window Title
+  useEffect(() => {
+    const title = files.length > 0
+      ? t(config.language, 'renameItems', { count: selectedIds.size })
+      : t(config.language, 'appTitle');
+
+    try {
+      getCurrentWindow().setTitle(title);
+    } catch {
+      // Ignore if not permitted
+    }
+  }, [files.length, selectedIds.size, config.language]);
+
+  // 5. Tauri drag and drop handling
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+
+    try {
+      getCurrentWebview()
+        .onDragDropEvent((event) => {
+          if (event.payload.type === 'enter') {
+            setIsDraggingOver(true);
+          } else if (event.payload.type === 'leave') {
+            setIsDraggingOver(false);
+          } else if (event.payload.type === 'drop') {
+            setIsDraggingOver(false);
+            const paths = event.payload.paths;
+            if (paths && paths.length > 0) {
+              invoke<FileItem[]>('get_files_info', { paths })
+                .then((newItems) => {
+                  if (newItems && newItems.length > 0) {
+                    setFiles((prev) => {
+                      const existingPaths = new Set(prev.map((p) => p.path));
+                      const toAdd = newItems.filter((item) => !existingPaths.has(item.path));
+                      const updated = [...prev, ...toAdd];
+                      setSelectedIds(new Set(updated.map((f) => f.id)));
+                      return updated;
+                    });
+                  }
+                })
+                .catch((err) => console.error('Failed to get files info:', err));
+            }
+          }
+        })
+        .then((u) => {
+          unlisten = u;
+        })
+        .catch(() => {
+          // Not running inside Tauri webview
+        });
+    } catch {
+      // Fallback
+    }
+
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, []);
+
+  // 6. Compute real-time rename preview and conflicts
+  const { previews, regexError } = useMemo(() => {
+    return computeRenamePreviews(files, selectedIds, {
+      matchPattern,
+      isRegex,
+      renameTemplate,
+      startFrom,
+      step,
+      caseMode,
+    });
+  }, [files, selectedIds, matchPattern, isRegex, renameTemplate, startFrom, step, caseMode]);
+
+  const conflicts = useMemo(() => {
+    return previews.filter((p) => p.conflictReason);
+  }, [previews]);
+
+  const changedCount = useMemo(() => {
+    return previews.filter((p) => p.selected && p.hasChanged && !p.conflictReason).length;
+  }, [previews]);
+
+  const hasSequenceTokens = useMemo(() => {
+    return /\$N|\$n/i.test(renameTemplate);
+  }, [renameTemplate]);
+
+  // Insert token at cursor position
+  const insertToken = (token: string) => {
+    const input = renameInputRef.current;
+    if (!input) {
+      setRenameTemplate((prev) => prev + token);
+      return;
+    }
+
+    const start = input.selectionStart ?? input.value.length;
+    const end = input.selectionEnd ?? input.value.length;
+    const val = input.value;
+    const nextVal = val.substring(0, start) + token + val.substring(end);
+
+    setRenameTemplate(nextVal);
+
+    setTimeout(() => {
+      input.focus();
+      input.setSelectionRange(start + token.length, start + token.length);
+    }, 0);
+  };
+
+  // Toggle selection
+  const toggleSelectAll = () => {
+    if (selectedIds.size === files.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(files.map((f) => f.id)));
+    }
+  };
+
+  const toggleSelectOne = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const removeFile = (id: string) => {
+    setFiles((prev) => prev.filter((f) => f.id !== id));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  };
+
+  const clearAllFiles = () => {
+    setFiles([]);
+    setSelectedIds(new Set());
+    setLastRenameHistory(null);
+  };
+
+  const showToast = useCallback((message: string, canUndo: boolean = false, durationMs: number = 4000) => {
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+    }
+    setToastState({ message, canUndo });
+    toastTimeoutRef.current = window.setTimeout(() => {
+      setToastState(null);
+    }, durationMs);
+  }, []);
+
+  // Execute batch rename
+  const handleRename = async () => {
+    if (conflicts.length > 0 || changedCount === 0 || isRenaming) return;
+
+    setIsRenaming(true);
+
+    const operations: RenameOperation[] = previews
+      .filter((p) => p.selected && p.hasChanged)
+      .map((p) => ({
+        id: p.file.id,
+        old_path: p.file.path,
+        new_path: p.newPath,
+      }));
+
+    try {
+      const res = await invoke<BatchRenameResult>('rename_files', { operations });
+
+      if (res.failures.length === 0) {
+        setLastRenameHistory(res.history);
+        showToast(t(config.language, 'successToast', { count: res.success_count }), true, 6000);
+
+        // Refresh paths in current list to reflect new names
+        setFiles((prev) => {
+          return prev.map((f) => {
+            const preview = previews.find((p) => p.file.id === f.id);
+            if (preview && preview.selected && preview.hasChanged) {
+              return {
+                ...f,
+                path: preview.newPath,
+                original_name: preview.newName,
+                stem: preview.newStem,
+              };
+            }
+            return f;
+          });
+        });
+      } else {
+        showToast(`${t(config.language, 'errorToast')}: ${res.failures[0].error}`, false);
+      }
+    } catch (err: any) {
+      showToast(`${t(config.language, 'errorToast')}: ${err?.message || err}`, false);
+    } finally {
+      setIsRenaming(false);
+    }
+  };
+
+  // Execute Undo
+  const handleUndo = useCallback(async () => {
+    if (!lastRenameHistory || lastRenameHistory.length === 0 || isRenaming) return;
+
+    setIsRenaming(true);
+
+    try {
+      const res = await invoke<BatchRenameResult>('undo_rename', { operations: lastRenameHistory });
+
+      if (res.failures.length === 0) {
+        showToast(t(config.language, 'undoSuccess', { count: res.success_count }), false, 3500);
+
+        // Map reverted paths back: history had old_path -> new_path, now it's reverted back to old_path
+        const revertMap = new Map<string, string>();
+        for (const item of lastRenameHistory) {
+          revertMap.set(item.new_path, item.old_path);
+        }
+
+        setFiles((prev) => {
+          return prev.map((f) => {
+            const originalPath = revertMap.get(f.path);
+            if (originalPath) {
+              const sep = originalPath.includes('/') ? '/' : '\\';
+              const parts = originalPath.split(sep);
+              const original_name = parts[parts.length - 1];
+              const dotIdx = original_name.lastIndexOf('.');
+              const stem = (!f.is_dir && dotIdx > 0) ? original_name.substring(0, dotIdx) : original_name;
+              return {
+                ...f,
+                path: originalPath,
+                original_name,
+                stem,
+              };
+            }
+            return f;
+          });
+        });
+
+        setLastRenameHistory(null);
+      } else {
+        showToast(`${t(config.language, 'errorToast')}: ${res.failures[0].error}`, false);
+      }
+    } catch (err: any) {
+      showToast(`${t(config.language, 'errorToast')}: ${err?.message || err}`, false);
+    } finally {
+      setIsRenaming(false);
+    }
+  }, [lastRenameHistory, isRenaming, config.language, showToast]);
+
+  // Global Ctrl+Z / Cmd+Z shortcut for undo
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+        // If user is editing text in an input field, let native browser undo handle it
+        if (document.activeElement?.tagName === 'INPUT') {
+          return;
+        }
+        if (lastRenameHistory && lastRenameHistory.length > 0) {
+          e.preventDefault();
+          handleUndo();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [lastRenameHistory, handleUndo]);
+
+  // Toggle Language
+  const toggleLanguage = () => {
+    const nextLang: Language = config.language === 'zh-TW' ? 'en' : 'zh-TW';
+    const nextConfig: AppConfig = { ...config, language: nextLang };
+    setConfig(nextConfig);
+    invoke('save_config', { config: nextConfig }).catch(console.error);
+  };
+
+  // Change Theme via Dropdown
+  const handleThemeChange = (newTheme: Theme) => {
+    const nextConfig: AppConfig = { ...config, theme: newTheme };
+    setConfig(nextConfig);
+    invoke('save_config', { config: nextConfig }).catch(console.error);
+  };
+
+  return (
+    <div className="app-container">
+      {/* Toast Notification with Undo button */}
+      {toastState && (
+        <div className="toast-container">
+          <span>{toastState.message}</span>
+          {toastState.canUndo && lastRenameHistory && (
+            <button
+              type="button"
+              className="toast-undo-btn"
+              onClick={handleUndo}
+            >
+              {t(config.language, 'undo')}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Drag Over Overlay */}
+      {isDraggingOver && (
+        <div className="drag-overlay">
+          <FolderUp size={52} />
+          <div className="drag-overlay-text">{t(config.language, 'dropToAdd')}</div>
+        </div>
+      )}
+
+      {/* App Header (Vertically stacked title & subtitle, no duplicate icon) */}
+      <header className="app-header">
+        <div className="header-left">
+          <span className="header-title">
+            {files.length > 0
+              ? t(config.language, 'renameItems', { count: selectedIds.size })
+              : t(config.language, 'appTitle')}
+          </span>
+          {files.length > 0 && (
+            <span className="header-subtitle">
+              {t(config.language, 'totalItems', { total: files.length })}
+            </span>
+          )}
+        </div>
+
+        <div className="header-actions">
+          <button
+            className="icon-btn"
+            onClick={toggleLanguage}
+            title={config.language === 'zh-TW' ? 'Switch to English' : '切換為繁體中文'}
+            type="button"
+          >
+            <Languages size={14} style={{ marginRight: 4 }} />
+            {config.language === 'zh-TW' ? 'EN' : '繁中'}
+          </button>
+
+          {/* Theme Dropdown Select */}
+          <div className="theme-select-wrapper">
+            <select
+              className="theme-select"
+              value={config.theme}
+              onChange={(e) => handleThemeChange(e.target.value as Theme)}
+              aria-label="Theme Selection"
+            >
+              <option value="system">{t(config.language, 'themeSystem')}</option>
+              <option value="light">{t(config.language, 'themeLight')}</option>
+              <option value="dark">{t(config.language, 'themeDark')}</option>
+            </select>
+            <span className="theme-select-arrow">
+              <ChevronDown size={13} />
+            </span>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content Area */}
+      {files.length === 0 ? (
+        <div className="empty-state">
+          <div className="empty-drop-zone">
+            <FolderUp size={48} className="empty-icon" />
+            <div className="empty-title">{t(config.language, 'emptyTitle')}</div>
+            <div className="empty-subtitle">{t(config.language, 'emptySubtitle')}</div>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Rule Configuration Section */}
+          <section className="config-section">
+            <div className="field-group">
+              <label className="field-label">{t(config.language, 'matchLabel')}</label>
+              <div className="input-with-action">
+                <input
+                  type="text"
+                  className={`text-input ${regexError ? 'error' : ''}`}
+                  placeholder={t(config.language, 'matchPlaceholder')}
+                  value={matchPattern}
+                  onChange={(e) => setMatchPattern(e.target.value)}
+                />
+                <button
+                  type="button"
+                  className={`regex-toggle-btn ${isRegex ? 'active' : ''}`}
+                  onClick={() => setIsRegex(!isRegex)}
+                  title={t(config.language, 'regexTooltip')}
+                >
+                  .*
+                </button>
+              </div>
+            </div>
+
+            <div className="field-group">
+              <label className="field-label">{t(config.language, 'renameToLabel')}</label>
+              <input
+                ref={renameInputRef}
+                type="text"
+                className="text-input"
+                placeholder={t(config.language, 'renameToPlaceholder')}
+                value={renameTemplate}
+                onChange={(e) => setRenameTemplate(e.target.value)}
+              />
+            </div>
+
+            {/* Token chip buttons */}
+            <div className="token-row">
+              <button
+                type="button"
+                className="token-chip-btn"
+                onClick={() => insertToken('$name')}
+              >
+                {t(config.language, 'tokenCurrentName')}
+              </button>
+              <button
+                type="button"
+                className="token-chip-btn"
+                onClick={() => insertToken('$NN')}
+              >
+                <span>{t(config.language, 'tokenNumberAsc')}</span>
+                <span className="token-arrow-icon">
+                  <ArrowUp size={13} strokeWidth={2.6} />
+                </span>
+              </button>
+              <button
+                type="button"
+                className="token-chip-btn"
+                onClick={() => insertToken('$nn')}
+              >
+                <span>{t(config.language, 'tokenNumberDesc')}</span>
+                <span className="token-arrow-icon">
+                  <ArrowDown size={13} strokeWidth={2.6} />
+                </span>
+              </button>
+              <button
+                type="button"
+                className="token-chip-btn"
+                onClick={() => insertToken('$date')}
+              >
+                <Calendar size={13} style={{ marginRight: 2 }} />
+                <span>{t(config.language, 'tokenDate')}</span>
+              </button>
+            </div>
+
+            {/* Case conversion segmented control */}
+            <div className="case-control-row">
+              <span className="case-label">{t(config.language, 'caseLabel')}</span>
+              <div className="segmented-case">
+                <button
+                  type="button"
+                  className={`segmented-btn ${caseMode === 'none' ? 'active' : ''}`}
+                  onClick={() => setCaseMode('none')}
+                >
+                  {t(config.language, 'caseNone')}
+                </button>
+                <button
+                  type="button"
+                  className={`segmented-btn ${caseMode === 'upper' ? 'active' : ''}`}
+                  onClick={() => setCaseMode('upper')}
+                >
+                  {t(config.language, 'caseUpper')}
+                </button>
+                <button
+                  type="button"
+                  className={`segmented-btn ${caseMode === 'lower' ? 'active' : ''}`}
+                  onClick={() => setCaseMode('lower')}
+                >
+                  {t(config.language, 'caseLower')}
+                </button>
+                <button
+                  type="button"
+                  className={`segmented-btn ${caseMode === 'title' ? 'active' : ''}`}
+                  onClick={() => setCaseMode('title')}
+                >
+                  {t(config.language, 'caseTitle')}
+                </button>
+              </div>
+            </div>
+
+            {/* Sub-tools row: Sequence steppers on left + Clear all button on right */}
+            {(hasSequenceTokens || files.length > 0) && (
+              <div className="sub-tools-row">
+                <div className="sub-tools-left">
+                  {hasSequenceTokens && (
+                    <div className="sequence-row">
+                      <div className="stepper-control">
+                        <span className="stepper-label">{t(config.language, 'startFrom')}</span>
+                        <div className="stepper-box">
+                          <button
+                            type="button"
+                            className="stepper-btn"
+                            onClick={() => setStartFrom((v) => v - 1)}
+                            title="Decrease"
+                          >
+                            <Minus size={13} strokeWidth={2.4} />
+                          </button>
+                          <input
+                            type="number"
+                            className="stepper-input"
+                            value={startFrom}
+                            onChange={(e) => setStartFrom(parseInt(e.target.value, 10) || 0)}
+                          />
+                          <button
+                            type="button"
+                            className="stepper-btn"
+                            onClick={() => setStartFrom((v) => v + 1)}
+                            title="Increase"
+                          >
+                            <Plus size={13} strokeWidth={2.4} />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="stepper-control">
+                        <span className="stepper-label">{t(config.language, 'step')}</span>
+                        <div className="stepper-box">
+                          <button
+                            type="button"
+                            className="stepper-btn"
+                            onClick={() => setStep((v) => Math.max(1, v - 1))}
+                            title="Decrease"
+                          >
+                            <Minus size={13} strokeWidth={2.4} />
+                          </button>
+                          <input
+                            type="number"
+                            className="stepper-input"
+                            min="1"
+                            value={step}
+                            onChange={(e) => setStep(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                          />
+                          <button
+                            type="button"
+                            className="stepper-btn"
+                            onClick={() => setStep((v) => v + 1)}
+                            title="Increase"
+                          >
+                            <Plus size={13} strokeWidth={2.4} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="sub-tools-right">
+                  {files.length > 0 && (
+                    <button
+                      className="clear-list-btn"
+                      onClick={clearAllFiles}
+                      title={t(config.language, 'clearAll')}
+                      type="button"
+                    >
+                      <Trash2 size={13} style={{ marginRight: 4 }} />
+                      <span>{t(config.language, 'clearAll')}</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </section>
+
+          {/* Conflict Banner */}
+          {conflicts.length > 0 && (
+            <div className="conflict-banner">
+              <AlertTriangle size={16} />
+              <span>{t(config.language, 'conflictWarning', { count: conflicts.length })}</span>
+            </div>
+          )}
+
+          {/* Preview Table */}
+          <section className="preview-section">
+            <div className="preview-table-container">
+              <table className="preview-table">
+                <thead>
+                  <tr>
+                    <th className="col-checkbox">
+                      <button
+                        type="button"
+                        onClick={toggleSelectAll}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex' }}
+                      >
+                        {selectedIds.size === files.length ? (
+                          <CheckSquare size={15} color="var(--accent-color)" />
+                        ) : (
+                          <Square size={15} color="var(--text-muted)" />
+                        )}
+                      </button>
+                    </th>
+                    <th className="col-original">{t(config.language, 'colOriginal')}</th>
+                    <th className="col-preview">{t(config.language, 'colPreview')}</th>
+                    <th className="col-action"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {previews.map((item) => (
+                    <tr
+                      key={item.file.id}
+                      className={item.conflictReason ? 'has-conflict' : ''}
+                    >
+                      <td className="col-checkbox">
+                        <button
+                          type="button"
+                          onClick={() => toggleSelectOne(item.file.id)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex' }}
+                        >
+                          {item.selected ? (
+                            <CheckSquare size={15} color="var(--accent-color)" />
+                          ) : (
+                            <Square size={15} color="var(--text-muted)" />
+                          )}
+                        </button>
+                      </td>
+
+                      <td className="col-original" title={item.file.original_name}>
+                        {item.file.original_name}
+                      </td>
+
+                      <td className="col-preview" title={item.newName}>
+                        {!item.selected || !item.isMatch || !item.hasChanged ? (
+                          <span className="text-dimmed">{item.newName}</span>
+                        ) : (
+                          <>
+                            {item.diffSegments.map((seg, i) => (
+                              <span
+                                key={i}
+                                className={seg.type === 'added' ? 'diff-added' : 'diff-same'}
+                              >
+                                {seg.text}
+                              </span>
+                            ))}
+                          </>
+                        )}
+                        {item.conflictReason && (
+                          <span className="conflict-tag">⚠ {item.conflictReason}</span>
+                        )}
+                      </td>
+
+                      <td className="col-action">
+                        <button
+                          type="button"
+                          className="delete-row-btn"
+                          onClick={() => removeFile(item.file.id)}
+                          title={t(config.language, 'colActions')}
+                        >
+                          <X size={15} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </>
+      )}
+
+      {/* Footer */}
+      <footer className="app-footer">
+        <div className="footer-left">
+          <button
+            type="button"
+            className="learn-more-link"
+            onClick={() => setIsHelpOpen(true)}
+          >
+            {t(config.language, 'learnMore')}
+          </button>
+        </div>
+
+        <div className="footer-right">
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={clearAllFiles}
+          >
+            {t(config.language, 'cancel')}
+          </button>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={conflicts.length > 0 || changedCount === 0 || isRenaming}
+            onClick={handleRename}
+          >
+            {changedCount > 0
+              ? t(config.language, 'renameCountBtn', { count: changedCount })
+              : t(config.language, 'renameBtn')}
+          </button>
+        </div>
+      </footer>
+
+      {/* Frosted Popover Modal */}
+      <HelpPopover
+        isOpen={isHelpOpen}
+        onClose={() => setIsHelpOpen(false)}
+        lang={config.language}
+      />
+    </div>
+  );
+}
+
+export default App;
