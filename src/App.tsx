@@ -31,7 +31,6 @@ import {
   Minus,
   ArrowUp,
   ArrowDown,
-  Calendar,
 } from 'lucide-react';
 import './App.css';
 
@@ -609,7 +608,7 @@ export function App() {
               />
             </div>
 
-            {/* Token chip buttons */}
+            {/* Token chip buttons: Current name -> Date (no icon) -> Number Asc -> Number Desc */}
             <div className="token-row">
               <button
                 type="button"
@@ -617,6 +616,13 @@ export function App() {
                 onClick={() => insertToken('$name')}
               >
                 {t(config.language, 'tokenCurrentName')}
+              </button>
+              <button
+                type="button"
+                className="token-chip-btn"
+                onClick={() => insertToken('$date')}
+              >
+                {t(config.language, 'tokenDate')}
               </button>
               <button
                 type="button"
@@ -638,132 +644,120 @@ export function App() {
                   <ArrowDown size={13} strokeWidth={2.6} />
                 </span>
               </button>
-              <button
-                type="button"
-                className="token-chip-btn"
-                onClick={() => insertToken('$date')}
-              >
-                <Calendar size={13} style={{ marginRight: 2 }} />
-                <span>{t(config.language, 'tokenDate')}</span>
-              </button>
             </div>
 
-            {/* Case conversion segmented control */}
-            <div className="case-control-row">
-              <span className="case-label">{t(config.language, 'caseLabel')}</span>
-              <div className="segmented-case">
-                <button
-                  type="button"
-                  className={`segmented-btn ${currentStep.caseMode === 'none' ? 'active' : ''}`}
-                  onClick={() => updateCurrentStep({ caseMode: 'none' })}
-                >
-                  {t(config.language, 'caseNone')}
-                </button>
-                <button
-                  type="button"
-                  className={`segmented-btn ${currentStep.caseMode === 'upper' ? 'active' : ''}`}
-                  onClick={() => updateCurrentStep({ caseMode: 'upper' })}
-                >
-                  {t(config.language, 'caseUpper')}
-                </button>
-                <button
-                  type="button"
-                  className={`segmented-btn ${currentStep.caseMode === 'lower' ? 'active' : ''}`}
-                  onClick={() => updateCurrentStep({ caseMode: 'lower' })}
-                >
-                  {t(config.language, 'caseLower')}
-                </button>
-                <button
-                  type="button"
-                  className={`segmented-btn ${currentStep.caseMode === 'title' ? 'active' : ''}`}
-                  onClick={() => updateCurrentStep({ caseMode: 'title' })}
-                >
-                  {t(config.language, 'caseTitle')}
-                </button>
-              </div>
-            </div>
-
-            {/* Sub-tools row: Sequence steppers on left + Clear all button on right */}
-            {(hasSequenceTokens || files.length > 0) && (
-              <div className="sub-tools-row">
-                <div className="sub-tools-left">
-                  {hasSequenceTokens && (
-                    <div className="sequence-row">
-                      <div className="stepper-control">
-                        <span className="stepper-label">{t(config.language, 'startFrom')}</span>
-                        <div className="stepper-box">
-                          <button
-                            type="button"
-                            className="stepper-btn"
-                            onClick={() => updateCurrentStep({ startFrom: currentStep.startFrom - 1 })}
-                            title="Decrease"
-                          >
-                            <Minus size={13} strokeWidth={2.4} />
-                          </button>
-                          <input
-                            type="number"
-                            className="stepper-input"
-                            value={currentStep.startFrom}
-                            onChange={(e) => updateCurrentStep({ startFrom: parseInt(e.target.value, 10) || 0 })}
-                          />
-                          <button
-                            type="button"
-                            className="stepper-btn"
-                            onClick={() => updateCurrentStep({ startFrom: currentStep.startFrom + 1 })}
-                            title="Increase"
-                          >
-                            <Plus size={13} strokeWidth={2.4} />
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="stepper-control">
-                        <span className="stepper-label">{t(config.language, 'step')}</span>
-                        <div className="stepper-box">
-                          <button
-                            type="button"
-                            className="stepper-btn"
-                            onClick={() => updateCurrentStep({ step: Math.max(1, currentStep.step - 1) })}
-                            title="Decrease"
-                          >
-                            <Minus size={13} strokeWidth={2.4} />
-                          </button>
-                          <input
-                            type="number"
-                            className="stepper-input"
-                            min="1"
-                            value={currentStep.step}
-                            onChange={(e) => updateCurrentStep({ step: Math.max(1, parseInt(e.target.value, 10) || 1) })}
-                          />
-                          <button
-                            type="button"
-                            className="stepper-btn"
-                            onClick={() => updateCurrentStep({ step: currentStep.step + 1 })}
-                            title="Increase"
-                          >
-                            <Plus size={13} strokeWidth={2.4} />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
+            {/* Sequence Steppers (appears only when sequence tokens are in rule) */}
+            {hasSequenceTokens && (
+              <div className="sequence-row">
+                <div className="stepper-control">
+                  <span className="stepper-label">{t(config.language, 'startFrom')}</span>
+                  <div className="stepper-box">
+                    <button
+                      type="button"
+                      className="stepper-btn"
+                      onClick={() => updateCurrentStep({ startFrom: currentStep.startFrom - 1 })}
+                      title="Decrease"
+                    >
+                      <Minus size={13} strokeWidth={2.4} />
+                    </button>
+                    <input
+                      type="number"
+                      className="stepper-input"
+                      value={currentStep.startFrom}
+                      onChange={(e) => updateCurrentStep({ startFrom: parseInt(e.target.value, 10) || 0 })}
+                    />
+                    <button
+                      type="button"
+                      className="stepper-btn"
+                      onClick={() => updateCurrentStep({ startFrom: currentStep.startFrom + 1 })}
+                      title="Increase"
+                    >
+                      <Plus size={13} strokeWidth={2.4} />
+                    </button>
+                  </div>
                 </div>
 
-                <div className="sub-tools-right">
-                  {files.length > 0 && (
+                <div className="stepper-control">
+                  <span className="stepper-label">{t(config.language, 'step')}</span>
+                  <div className="stepper-box">
                     <button
-                      className="clear-list-btn"
-                      onClick={clearAllFiles}
-                      title={t(config.language, 'clearAll')}
                       type="button"
+                      className="stepper-btn"
+                      onClick={() => updateCurrentStep({ step: Math.max(1, currentStep.step - 1) })}
+                      title="Decrease"
                     >
-                      <Trash2 size={13} style={{ marginRight: 4 }} />
-                      <span>{t(config.language, 'clearAll')}</span>
+                      <Minus size={13} strokeWidth={2.4} />
                     </button>
-                  )}
+                    <input
+                      type="number"
+                      className="stepper-input"
+                      min="1"
+                      value={currentStep.step}
+                      onChange={(e) => updateCurrentStep({ step: Math.max(1, parseInt(e.target.value, 10) || 1) })}
+                    />
+                    <button
+                      type="button"
+                      className="stepper-btn"
+                      onClick={() => updateCurrentStep({ step: currentStep.step + 1 })}
+                      title="Increase"
+                    >
+                      <Plus size={13} strokeWidth={2.4} />
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
+
+            {/* Case conversion segmented control on left + Clear list on right */}
+            <div className="case-control-row">
+              <div className="case-control-left">
+                <span className="case-label">{t(config.language, 'caseLabel')}</span>
+                <div className="segmented-case">
+                  <button
+                    type="button"
+                    className={`segmented-btn ${currentStep.caseMode === 'none' ? 'active' : ''}`}
+                    onClick={() => updateCurrentStep({ caseMode: 'none' })}
+                  >
+                    {t(config.language, 'caseNone')}
+                  </button>
+                  <button
+                    type="button"
+                    className={`segmented-btn ${currentStep.caseMode === 'upper' ? 'active' : ''}`}
+                    onClick={() => updateCurrentStep({ caseMode: 'upper' })}
+                  >
+                    {t(config.language, 'caseUpper')}
+                  </button>
+                  <button
+                    type="button"
+                    className={`segmented-btn ${currentStep.caseMode === 'lower' ? 'active' : ''}`}
+                    onClick={() => updateCurrentStep({ caseMode: 'lower' })}
+                  >
+                    {t(config.language, 'caseLower')}
+                  </button>
+                  <button
+                    type="button"
+                    className={`segmented-btn ${currentStep.caseMode === 'title' ? 'active' : ''}`}
+                    onClick={() => updateCurrentStep({ caseMode: 'title' })}
+                  >
+                    {t(config.language, 'caseTitle')}
+                  </button>
+                </div>
+              </div>
+
+              {files.length > 0 && (
+                <div className="case-control-right">
+                  <button
+                    className="clear-list-btn"
+                    onClick={clearAllFiles}
+                    title={t(config.language, 'clearAll')}
+                    type="button"
+                  >
+                    <Trash2 size={13} style={{ marginRight: 4 }} />
+                    <span>{t(config.language, 'clearAll')}</span>
+                  </button>
+                </div>
+              )}
+            </div>
           </section>
 
           {/* Conflict Banner */}
