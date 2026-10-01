@@ -990,33 +990,70 @@ body {
    Phase 3: Pipeline Bar & Presets Dropdown Styles
    ========================================================================== */
 
-.pipeline-bar-wrapper {
+.pipeline-bar-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.pipeline-header-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 12px;
-  padding-bottom: 4px;
-  border-bottom: 1px solid var(--border-color);
-  min-height: 48px;
+  min-height: 28px;
+}
+
+.pipeline-title-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pipeline-title-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.1px;
+}
+
+.pipeline-step-count {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.pipeline-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pipeline-track-wrapper {
   position: relative;
+  width: 100%;
+  height: 38px;
+  min-height: 38px;
+  display: flex;
+  align-items: stretch;
 }
 
 .pipeline-scroll-area {
   display: flex;
-  flex-direction: column;
-  justify-content: center;
-  flex: 1;
+  align-items: center;
+  width: 100%;
   overflow-x: auto;
   overflow-y: hidden;
-  min-width: 0;
-  padding-bottom: 6px;
+  scroll-behavior: smooth;
   scrollbar-width: thin;
   scrollbar-color: var(--border-color) transparent;
+  padding-bottom: 4px;
 }
 
 .pipeline-scroll-area::-webkit-scrollbar {
-  height: 5px;
+  height: 4px;
 }
 
 .pipeline-scroll-area::-webkit-scrollbar-track {
@@ -1149,23 +1186,6 @@ body {
   border-color: var(--accent-color);
   color: var(--accent-color);
   background: var(--accent-light);
-}
-
-.pipeline-divider-vertical {
-  width: 1px;
-  height: 24px;
-  background-color: var(--border-color);
-  margin: 0 4px;
-  margin-bottom: 6px;
-  flex-shrink: 0;
-}
-
-.pipeline-docked-right {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  position: relative;
-  margin-bottom: 6px;
 }
 
 /* Presets Dropdown */
