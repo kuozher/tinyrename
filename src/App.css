@@ -273,26 +273,28 @@ body {
 .token-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 6px;
+  flex-wrap: nowrap;
+  min-height: 32px;
 }
 
 .token-chip-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  height: 32px;
-  padding: 0 12px;
+  gap: 4px;
+  height: 30px;
+  padding: 0 10px;
   background-color: var(--bg-chip);
   border: 1px solid var(--border-color);
   border-radius: 6px;
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 500;
   color: var(--text-primary);
   cursor: pointer;
   transition: all 0.15s ease;
   line-height: 1;
+  flex-shrink: 0;
 }
 
 .token-chip-btn:hover {
@@ -310,6 +312,90 @@ body {
   align-items: center;
   justify-content: center;
   color: var(--accent-color);
+}
+
+/* Sequence Steppers grouped inline with tokens */
+.token-steppers-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 6px;
+  animation: fadeIn 0.18s ease;
+  flex-shrink: 0;
+}
+
+.token-steppers-group .stepper-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.token-steppers-group .stepper-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.token-steppers-group .stepper-box {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background-color: var(--bg-input);
+  overflow: hidden;
+  transition: border-color 0.15s ease;
+}
+
+.token-steppers-group .stepper-box:focus-within {
+  border-color: var(--border-focus);
+}
+
+.token-steppers-group .stepper-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 100%;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+
+.token-steppers-group .stepper-btn:hover {
+  background-color: var(--bg-chip-hover);
+}
+
+.token-steppers-group .stepper-btn:active {
+  background-color: var(--bg-chip-active);
+}
+
+.token-steppers-group .stepper-input {
+  width: 36px;
+  height: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  text-align: center;
+  font-size: 12.5px;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--text-primary);
+  border-left: 1px solid var(--border-color);
+  border-right: 1px solid var(--border-color);
+}
+
+.token-steppers-group .stepper-input::-webkit-outer-spin-button,
+.token-steppers-group .stepper-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.token-steppers-group .stepper-input[type=number] {
+  -moz-appearance: textfield;
 }
 
 /* Case control row */
@@ -1007,8 +1093,8 @@ body {
 .pipeline-bar-container {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-bottom: 14px;
+  gap: 6px;
+  margin-bottom: 8px;
 }
 
 .pipeline-header-row {
@@ -1046,36 +1132,40 @@ body {
 .pipeline-track-wrapper {
   position: relative;
   width: 100%;
-  height: 38px;
-  min-height: 38px;
+  height: 48px;
+  min-height: 48px;
   display: flex;
-  align-items: stretch;
+  align-items: flex-start;
+  overflow: hidden;
 }
 
 .pipeline-scroll-area {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   width: 100%;
+  height: 48px;
   overflow-x: auto;
   overflow-y: hidden;
   scroll-behavior: smooth;
   scrollbar-width: thin;
   scrollbar-color: var(--border-color) transparent;
-  padding-bottom: 4px;
+  padding-top: 2px;
+  padding-bottom: 6px;
+  box-sizing: border-box;
 }
 
 .pipeline-scroll-area::-webkit-scrollbar {
-  height: 4px;
+  height: 6px;
 }
 
 .pipeline-scroll-area::-webkit-scrollbar-track {
   background: transparent;
-  border-radius: 4px;
+  border-radius: 3px;
 }
 
 .pipeline-scroll-area::-webkit-scrollbar-thumb {
   background: var(--border-color);
-  border-radius: 4px;
+  border-radius: 3px;
   transition: background-color 0.15s ease;
 }
 
@@ -1090,8 +1180,7 @@ body {
   gap: 6px;
   white-space: nowrap;
   flex-shrink: 0;
-  padding-top: 2px;
-  padding-bottom: 2px;
+  height: 28px;
 }
 
 .pipeline-arrow-separator {

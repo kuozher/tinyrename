@@ -287,7 +287,7 @@ export function App() {
   }, [previews]);
 
   const hasSequenceTokens = useMemo(() => {
-    return /\$N|\$n/i.test(currentStep.renameTemplate);
+    return /\$(?:N+|n+)(?![a-zA-Z])/.test(currentStep.renameTemplate);
   }, [currentStep.renameTemplate]);
 
   // Insert token at cursor position
@@ -608,7 +608,7 @@ export function App() {
               />
             </div>
 
-            {/* Token chip buttons: Current name -> Date (no icon) -> Number Asc -> Number Desc */}
+            {/* Token chip buttons + Conditional Sequence Steppers on the right */}
             <div className="token-row">
               <button
                 type="button"
@@ -644,69 +644,69 @@ export function App() {
                   <ArrowDown size={13} strokeWidth={2.6} />
                 </span>
               </button>
+
+              {/* Sequence Steppers: Appears to the right of sequence tokens when sequence token is in rule */}
+              {hasSequenceTokens && (
+                <div className="token-steppers-group">
+                  <div className="stepper-control">
+                    <span className="stepper-label">{t(config.language, 'startFrom')}</span>
+                    <div className="stepper-box">
+                      <button
+                        type="button"
+                        className="stepper-btn"
+                        onClick={() => updateCurrentStep({ startFrom: currentStep.startFrom - 1 })}
+                        title="Decrease"
+                      >
+                        <Minus size={12} strokeWidth={2.4} />
+                      </button>
+                      <input
+                        type="number"
+                        className="stepper-input"
+                        value={currentStep.startFrom}
+                        onChange={(e) => updateCurrentStep({ startFrom: parseInt(e.target.value, 10) || 0 })}
+                      />
+                      <button
+                        type="button"
+                        className="stepper-btn"
+                        onClick={() => updateCurrentStep({ startFrom: currentStep.startFrom + 1 })}
+                        title="Increase"
+                      >
+                        <Plus size={12} strokeWidth={2.4} />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="stepper-control">
+                    <span className="stepper-label">{t(config.language, 'step')}</span>
+                    <div className="stepper-box">
+                      <button
+                        type="button"
+                        className="stepper-btn"
+                        onClick={() => updateCurrentStep({ step: Math.max(1, currentStep.step - 1) })}
+                        title="Decrease"
+                      >
+                        <Minus size={12} strokeWidth={2.4} />
+                      </button>
+                      <input
+                        type="number"
+                        className="stepper-input"
+                        min="1"
+                        value={currentStep.step}
+                        onChange={(e) => updateCurrentStep({ step: Math.max(1, parseInt(e.target.value, 10) || 1) })}
+                      />
+                      <button
+                        type="button"
+                        className="stepper-btn"
+                        onClick={() => updateCurrentStep({ step: currentStep.step + 1 })}
+                        title="Increase"
+                      >
+                        <Plus size={12} strokeWidth={2.4} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
-
-            {/* Sequence Steppers (appears only when sequence tokens are in rule) */}
-            {hasSequenceTokens && (
-              <div className="sequence-row">
-                <div className="stepper-control">
-                  <span className="stepper-label">{t(config.language, 'startFrom')}</span>
-                  <div className="stepper-box">
-                    <button
-                      type="button"
-                      className="stepper-btn"
-                      onClick={() => updateCurrentStep({ startFrom: currentStep.startFrom - 1 })}
-                      title="Decrease"
-                    >
-                      <Minus size={13} strokeWidth={2.4} />
-                    </button>
-                    <input
-                      type="number"
-                      className="stepper-input"
-                      value={currentStep.startFrom}
-                      onChange={(e) => updateCurrentStep({ startFrom: parseInt(e.target.value, 10) || 0 })}
-                    />
-                    <button
-                      type="button"
-                      className="stepper-btn"
-                      onClick={() => updateCurrentStep({ startFrom: currentStep.startFrom + 1 })}
-                      title="Increase"
-                    >
-                      <Plus size={13} strokeWidth={2.4} />
-                    </button>
-                  </div>
-                </div>
-
-                <div className="stepper-control">
-                  <span className="stepper-label">{t(config.language, 'step')}</span>
-                  <div className="stepper-box">
-                    <button
-                      type="button"
-                      className="stepper-btn"
-                      onClick={() => updateCurrentStep({ step: Math.max(1, currentStep.step - 1) })}
-                      title="Decrease"
-                    >
-                      <Minus size={13} strokeWidth={2.4} />
-                    </button>
-                    <input
-                      type="number"
-                      className="stepper-input"
-                      min="1"
-                      value={currentStep.step}
-                      onChange={(e) => updateCurrentStep({ step: Math.max(1, parseInt(e.target.value, 10) || 1) })}
-                    />
-                    <button
-                      type="button"
-                      className="stepper-btn"
-                      onClick={() => updateCurrentStep({ step: currentStep.step + 1 })}
-                      title="Increase"
-                    >
-                      <Plus size={13} strokeWidth={2.4} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
 
             {/* Case conversion segmented control on left + Clear list on right */}
             <div className="case-control-row">
