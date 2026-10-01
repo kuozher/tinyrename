@@ -163,18 +163,14 @@ export function App() {
     return () => mediaQuery.removeEventListener('change', handleChange);
   }, [config.theme]);
 
-  // 4. Update Window Title
+  // 4. Native Window Title permanently displays app title
   useEffect(() => {
-    const title = files.length > 0
-      ? t(config.language, 'renameItems', { count: selectedIds.size })
-      : t(config.language, 'appTitle');
-
     try {
-      getCurrentWindow().setTitle(title);
+      getCurrentWindow().setTitle('TinyRename');
     } catch {
       // Ignore if not permitted
     }
-  }, [files.length, selectedIds.size, config.language]);
+  }, []);
 
   // 5. Tauri drag and drop handling
   useEffect(() => {
