@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import {
@@ -95,6 +96,33 @@ export function App() {
         }
       })
       .catch((err) => console.error('Failed to get initial files:', err));
+  }, []);
+
+  // 1b. Listen to incoming files from secondary instances (e.g. multi-file right-click selection)
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+
+    listen<FileItem[]>('single-instance-files', (event) => {
+      const incoming = event.payload;
+      if (incoming && incoming.length > 0) {
+        setFiles((prev) => {
+          const existingPaths = new Set(prev.map((p) => p.path));
+          const toAdd = incoming.filter((item) => !existingPaths.has(item.path));
+          if (toAdd.length === 0) return prev;
+          const updated = [...prev, ...toAdd];
+          setSelectedIds(new Set(updated.map((f) => f.id)));
+          return updated;
+        });
+      }
+    })
+      .then((fn) => {
+        unlisten = fn;
+      })
+      .catch((err) => console.error('Failed to listen to single-instance-files:', err));
+
+    return () => {
+      if (unlisten) unlisten();
+    };
   }, []);
 
   // 2. Setup theme

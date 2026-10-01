@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct FileItem {
@@ -337,6 +337,33 @@ fn save_config(app: tauri::AppHandle, config: AppConfig) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            // Unminimize and focus main window if it exists
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+
+            // Parse file paths from secondary instance arguments
+            let mut items = Vec::new();
+            let mut seen = HashSet::new();
+
+            for arg in argv.into_iter().skip(1) {
+                if arg.starts_with('-') {
+                    continue;
+                }
+                if let Some(item) = parse_file_item(&arg) {
+                    if seen.insert(item.path.clone()) {
+                        items.push(item);
+                    }
+                }
+            }
+
+            if !items.is_empty() {
+                let _ = app.emit("single-instance-files", items);
+            }
+        }))
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             get_initial_files,
