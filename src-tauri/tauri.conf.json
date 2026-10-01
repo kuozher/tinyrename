@@ -16,7 +16,7 @@
         "title": "TinyRename",
         "width": 640,
         "height": 640,
-        "minWidth": 600,
+        "minWidth": 640,
         "minHeight": 520,
         "resizable": true,
         "decorations": true,
