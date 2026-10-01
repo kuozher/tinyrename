@@ -1,7 +1,11 @@
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use tauri::{Emitter, Manager};
+
+#[derive(Default)]
+pub struct PendingFilesState(pub Mutex<Vec<FileItem>>);
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct FileItem {
@@ -112,17 +116,27 @@ fn parse_file_item(path_str: &str) -> Option<FileItem> {
 }
 
 #[tauri::command]
-fn get_initial_files() -> Vec<FileItem> {
+fn get_initial_files(state: tauri::State<'_, PendingFilesState>) -> Vec<FileItem> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut items = Vec::new();
     let mut seen = HashSet::new();
 
+    // 1. Files from current primary instance arguments
     for arg in args {
         if arg.starts_with('-') {
             continue;
         }
 
         if let Some(item) = parse_file_item(&arg) {
+            if seen.insert(item.path.clone()) {
+                items.push(item);
+            }
+        }
+    }
+
+    // 2. Files accumulated from secondary instances before/during initial load
+    if let Ok(mut pending) = state.0.lock() {
+        for item in pending.drain(..) {
             if seen.insert(item.path.clone()) {
                 items.push(item);
             }
@@ -337,6 +351,7 @@ fn save_config(app: tauri::AppHandle, config: AppConfig) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(PendingFilesState(Mutex::new(Vec::new())))
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             // Unminimize and focus main window if it exists
             if let Some(window) = app.get_webview_window("main") {
@@ -361,6 +376,13 @@ pub fn run() {
             }
 
             if !items.is_empty() {
+                // Buffer items in case the frontend hasn't loaded / registered listeners yet
+                if let Some(state) = app.try_state::<PendingFilesState>() {
+                    if let Ok(mut pending) = state.0.lock() {
+                        pending.extend(items.clone());
+                    }
+                }
+                // Also emit event in case the frontend is already loaded and listening
                 let _ = app.emit("single-instance-files", items);
             }
         }))

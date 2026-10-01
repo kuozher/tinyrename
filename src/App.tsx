@@ -77,6 +77,20 @@ export function App() {
   const toastTimeoutRef = useRef<number | null>(null);
 
   // 1. Initial configuration and files
+  // Helper to merge new files into the list without duplicates and ensure they are selected
+  const mergeNewFiles = useCallback((newItems: FileItem[]) => {
+    if (!newItems || newItems.length === 0) return;
+    setFiles((prev) => {
+      const existingPaths = new Set(prev.map((p) => p.path));
+      const toAdd = newItems.filter((item) => !existingPaths.has(item.path));
+      if (toAdd.length === 0) return prev;
+      const updated = [...prev, ...toAdd];
+      setSelectedIds(new Set(updated.map((f) => f.id)));
+      return updated;
+    });
+  }, []);
+
+  // 1. Initial configuration and files loading
   useEffect(() => {
     // Load persisted configuration
     invoke<AppConfig>('load_config')
@@ -87,16 +101,23 @@ export function App() {
       })
       .catch((err) => console.error('Failed to load config:', err));
 
-    // Load initial files from CLI args (e.g. right-click menu)
-    invoke<FileItem[]>('get_initial_files')
-      .then((initialFiles) => {
-        if (initialFiles && initialFiles.length > 0) {
-          setFiles(initialFiles);
-          setSelectedIds(new Set(initialFiles.map((f) => f.id)));
-        }
-      })
-      .catch((err) => console.error('Failed to get initial files:', err));
-  }, []);
+    // Fetch initial files (primary CLI args + any pending secondary instance items)
+    const fetchInitialFiles = () => {
+      invoke<FileItem[]>('get_initial_files')
+        .then((initialFiles) => {
+          if (initialFiles && initialFiles.length > 0) {
+            mergeNewFiles(initialFiles);
+          }
+        })
+        .catch((err) => console.error('Failed to get initial files:', err));
+    };
+
+    fetchInitialFiles();
+
+    // Re-check after 350ms in case secondary instances were launched with slight delay by Windows Explorer
+    const retryTimer = setTimeout(fetchInitialFiles, 350);
+    return () => clearTimeout(retryTimer);
+  }, [mergeNewFiles]);
 
   // 1b. Listen to incoming files from secondary instances (e.g. multi-file right-click selection)
   useEffect(() => {
@@ -105,14 +126,7 @@ export function App() {
     listen<FileItem[]>('single-instance-files', (event) => {
       const incoming = event.payload;
       if (incoming && incoming.length > 0) {
-        setFiles((prev) => {
-          const existingPaths = new Set(prev.map((p) => p.path));
-          const toAdd = incoming.filter((item) => !existingPaths.has(item.path));
-          if (toAdd.length === 0) return prev;
-          const updated = [...prev, ...toAdd];
-          setSelectedIds(new Set(updated.map((f) => f.id)));
-          return updated;
-        });
+        mergeNewFiles(incoming);
       }
     })
       .then((fn) => {
@@ -123,7 +137,7 @@ export function App() {
     return () => {
       if (unlisten) unlisten();
     };
-  }, []);
+  }, [mergeNewFiles]);
 
   // 2. Setup theme
   useEffect(() => {
