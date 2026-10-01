@@ -656,6 +656,11 @@ body {
   vertical-align: middle;
 }
 
+.preview-table tbody tr {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 41px;
+}
+
 .preview-table tbody tr:nth-child(odd) {
   background-color: var(--row-odd-bg);
 }

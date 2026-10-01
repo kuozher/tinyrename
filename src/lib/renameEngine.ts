@@ -352,6 +352,8 @@ export function computePipelinePreviews(
         conflictReason = '檔名不可為空 / File name cannot be empty';
       } else if (INVALID_WIN_CHARS.test(item.newStem)) {
         conflictReason = '包含不合法字元 (\\ / : * ? " < > |)';
+      } else if (item.newPath.length >= 260) {
+        conflictReason = '路徑長度超過 Windows 260 字元上限 / Path exceeds Windows MAX_PATH (260)';
       } else {
         const normalized = item.newPath.toLowerCase();
         if ((pathCounts.get(normalized) || 0) > 1) {

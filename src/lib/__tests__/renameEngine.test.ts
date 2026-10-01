@@ -7,7 +7,7 @@ import {
   formatDate,
   applyCaseMode,
 } from '../renameEngine';
-import { FileItem } from '../../types';
+import { FileItem, RuleStep } from '../../types';
 
 describe('formatDate and Date tokens', () => {
   const testEpochSec = 1774953600; // 2026-04-01 00:00:00 UTC (or local)
@@ -95,6 +95,20 @@ describe('computeDiffSegments', () => {
     ]);
   });
 });
+
+function createMockFile(id: string, name: string, stem: string, ext: string, parentDir: string = 'C:\\test'): FileItem {
+  return {
+    id,
+    path: `${parentDir}\\${name}`,
+    parent_dir: parentDir,
+    original_name: name,
+    stem,
+    extension: ext,
+    is_dir: false,
+    size: 1024,
+    modified_timestamp: 1774953600,
+  };
+}
 
 describe('computeRenamePreviews', () => {
   const sampleFiles: FileItem[] = [
@@ -260,6 +274,65 @@ describe('computeRenamePreviews', () => {
     expect(previews[1].newName).toBe('PHOTO_002_15.JPG');
     expect(previews[0].hasChanged).toBe(true);
     expect(previews[0].conflictReason).toBeUndefined();
+  });
+
+  it('detects Windows MAX_PATH (>= 260 chars) warning conflict', () => {
+    // Construct a path that exceeds 260 characters
+    const longDir = 'C:\\users\\username\\documents\\very\\deep\\folder\\structure\\that\\is\\nested';
+    const longName = 'a'.repeat(240);
+    const files: FileItem[] = [
+      createMockFile('f1', 'orig.txt', 'orig', '.txt', longDir),
+    ];
+    const selectedIds = new Set(['f1']);
+    const steps: RuleStep[] = [
+      {
+        id: 's_long',
+        matchPattern: '',
+        isRegex: false,
+        renameTemplate: longName,
+        startFrom: 1,
+        step: 1,
+        caseMode: 'none',
+      },
+    ];
+
+    const { previews } = computePipelinePreviews(files, selectedIds, steps);
+    expect(previews[0].conflictReason).toContain('260');
+  });
+
+  it('computes 1,000 items pipeline preview in under 50ms', () => {
+    const files: FileItem[] = Array.from({ length: 1000 }, (_, i) =>
+      createMockFile(`f_${i}`, `IMG_${i + 1000}.jpg`, `IMG_${i + 1000}`, '.jpg', 'D:\\Photos')
+    );
+    const selectedIds = new Set(files.map((f) => f.id));
+    const steps: RuleStep[] = [
+      {
+        id: 's_p1',
+        matchPattern: 'IMG_',
+        isRegex: false,
+        renameTemplate: 'photo_$NN',
+        startFrom: 1,
+        step: 1,
+        caseMode: 'none',
+      },
+      {
+        id: 's_p2',
+        matchPattern: '',
+        isRegex: false,
+        renameTemplate: '$date_$name',
+        startFrom: 1,
+        step: 1,
+        caseMode: 'upper',
+      },
+    ];
+
+    const start = performance.now();
+    const { previews } = computePipelinePreviews(files, selectedIds, steps);
+    const elapsed = performance.now() - start;
+
+    expect(previews.length).toBe(1000);
+    expect(previews[0].newName).toContain('PHOTO_');
+    expect(elapsed).toBeLessThan(50); // Under 50ms for 1000 items
   });
 });
 
