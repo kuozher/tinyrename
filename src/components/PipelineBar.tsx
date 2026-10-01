@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { RuleStep, PresetItem, Language } from '../types';
 import { PresetDropdown } from './PresetDropdown';
 import { t } from '../lib/i18n';
@@ -33,6 +33,23 @@ export const PipelineBar: React.FC<PipelineBarProps> = ({
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Enable horizontal scrolling with natural vertical mouse wheel without holding Shift
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (e.deltaY !== 0) {
+      e.currentTarget.scrollLeft += e.deltaY;
+    }
+  };
+
+  // Ensure active step is kept in view when navigating or adding
+  useEffect(() => {
+    if (scrollRef.current) {
+      const activeEl = scrollRef.current.querySelector('.pipeline-step-pill.active') as HTMLElement;
+      if (activeEl) {
+        activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+      }
+    }
+  }, [activeStepIndex, steps.length]);
+
   const getStepSummary = (step: RuleStep, index: number): string => {
     if (step.name) return step.name;
     if (step.matchPattern) {
@@ -46,7 +63,7 @@ export const PipelineBar: React.FC<PipelineBarProps> = ({
 
   return (
     <div className="pipeline-bar-wrapper">
-      <div className="pipeline-scroll-area" ref={scrollRef}>
+      <div className="pipeline-scroll-area" ref={scrollRef} onWheel={handleWheel}>
         <div className="pipeline-steps-track">
           {steps.map((step, idx) => {
             const isActive = idx === activeStepIndex;

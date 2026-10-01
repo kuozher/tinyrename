@@ -994,28 +994,45 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 10px;
-  padding-bottom: 8px;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding-bottom: 4px;
   border-bottom: 1px solid var(--border-color);
-  height: 36px;
-  min-height: 36px;
+  min-height: 48px;
   position: relative;
 }
 
 .pipeline-scroll-area {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  justify-content: center;
   flex: 1;
   overflow-x: auto;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  overflow-y: hidden;
   min-width: 0;
-  mask-image: linear-gradient(to right, black 85%, transparent 100%);
+  padding-bottom: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-color) transparent;
 }
 
 .pipeline-scroll-area::-webkit-scrollbar {
-  display: none;
+  height: 5px;
+}
+
+.pipeline-scroll-area::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 4px;
+}
+
+.pipeline-scroll-area::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 4px;
+  transition: background-color 0.15s ease;
+}
+
+.pipeline-scroll-area::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+  cursor: pointer;
 }
 
 .pipeline-steps-track {
@@ -1024,6 +1041,8 @@ body {
   gap: 6px;
   white-space: nowrap;
   flex-shrink: 0;
+  padding-top: 2px;
+  padding-bottom: 2px;
 }
 
 .pipeline-arrow-separator {
@@ -1134,9 +1153,10 @@ body {
 
 .pipeline-divider-vertical {
   width: 1px;
-  height: 18px;
+  height: 24px;
   background-color: var(--border-color);
   margin: 0 4px;
+  margin-bottom: 6px;
   flex-shrink: 0;
 }
 
@@ -1145,6 +1165,7 @@ body {
   display: flex;
   align-items: center;
   position: relative;
+  margin-bottom: 6px;
 }
 
 /* Presets Dropdown */
