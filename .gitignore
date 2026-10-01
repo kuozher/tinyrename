@@ -26,3 +26,5 @@ tinyrename.exe
 release/
 *.zip
 scratch/
+HANDOFF.md
+handoff.md
