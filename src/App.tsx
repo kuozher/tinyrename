@@ -11,10 +11,13 @@ import {
   Language,
   Theme,
   CaseMode,
+  RuleStep,
+  PresetItem,
 } from './types';
-import { computeRenamePreviews } from './lib/renameEngine';
+import { computePipelinePreviews } from './lib/renameEngine';
 import { t } from './lib/i18n';
 import { HelpPopover } from './components/HelpPopover';
+import { PipelineBar } from './components/PipelineBar';
 import {
   FolderUp,
   X,
@@ -41,13 +44,20 @@ export function App() {
   const [files, setFiles] = useState<FileItem[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  // Rule state
-  const [matchPattern, setMatchPattern] = useState<string>('');
-  const [isRegex, setIsRegex] = useState<boolean>(false);
-  const [renameTemplate, setRenameTemplate] = useState<string>('$name');
-  const [startFrom, setStartFrom] = useState<number>(1);
-  const [step, setStep] = useState<number>(1);
-  const [caseMode, setCaseMode] = useState<CaseMode>('none');
+  // Rule Pipeline state
+  const [steps, setSteps] = useState<RuleStep[]>([
+    {
+      id: 'step_1',
+      matchPattern: '',
+      isRegex: false,
+      renameTemplate: '$name',
+      startFrom: 1,
+      step: 1,
+      caseMode: 'none',
+    },
+  ]);
+  const [activeStepIndex, setActiveStepIndex] = useState<number>(0);
+  const [currentPresetId, setCurrentPresetId] = useState<string | null>(null);
 
   // App UI state
   const [isHelpOpen, setIsHelpOpen] = useState<boolean>(false);
@@ -60,6 +70,7 @@ export function App() {
   const [config, setConfig] = useState<AppConfig>({
     language: 'zh-TW',
     theme: 'system',
+    customPresets: [],
   });
 
   const renameInputRef = useRef<HTMLInputElement>(null);
@@ -171,16 +182,102 @@ export function App() {
   }, []);
 
   // 6. Compute real-time rename preview and conflicts
-  const { previews, regexError } = useMemo(() => {
-    return computeRenamePreviews(files, selectedIds, {
-      matchPattern,
-      isRegex,
-      renameTemplate,
-      startFrom,
-      step,
-      caseMode,
+  const showToast = useCallback((message: string, canUndo: boolean = false, durationMs: number = 4000) => {
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+    }
+    setToastState({ message, canUndo });
+    toastTimeoutRef.current = window.setTimeout(() => {
+      setToastState(null);
+    }, durationMs);
+  }, []);
+
+  // Active step accessor and updater
+  const currentStep = steps[activeStepIndex] || steps[0] || {
+    id: 'step_fallback',
+    matchPattern: '',
+    isRegex: false,
+    renameTemplate: '$name',
+    startFrom: 1,
+    step: 1,
+    caseMode: 'none' as CaseMode,
+  };
+
+  const updateCurrentStep = (updates: Partial<RuleStep>) => {
+    setSteps((prev) => {
+      const copy = [...prev];
+      const targetIdx = activeStepIndex < copy.length ? activeStepIndex : 0;
+      if (copy[targetIdx]) {
+        copy[targetIdx] = { ...copy[targetIdx], ...updates };
+      }
+      return copy;
     });
-  }, [files, selectedIds, matchPattern, isRegex, renameTemplate, startFrom, step, caseMode]);
+    setCurrentPresetId(null);
+  };
+
+  const handleAddStep = () => {
+    const newStepId = `step_${Date.now()}`;
+    const newStep: RuleStep = {
+      id: newStepId,
+      matchPattern: '',
+      isRegex: false,
+      renameTemplate: '$name',
+      startFrom: 1,
+      step: 1,
+      caseMode: 'none',
+    };
+    setSteps((prev) => [...prev, newStep]);
+    setActiveStepIndex(steps.length);
+    setCurrentPresetId(null);
+  };
+
+  const handleRemoveStep = (indexToRemove: number) => {
+    if (steps.length <= 1) return;
+    setSteps((prev) => prev.filter((_, idx) => idx !== indexToRemove));
+    if (activeStepIndex >= indexToRemove && activeStepIndex > 0) {
+      setActiveStepIndex(activeStepIndex - 1);
+    }
+    setCurrentPresetId(null);
+  };
+
+  const handleSelectPreset = (preset: PresetItem) => {
+    const clonedSteps: RuleStep[] = preset.steps.map((s, idx) => ({
+      ...s,
+      id: `step_${Date.now()}_${idx}`,
+    }));
+    setSteps(clonedSteps);
+    setActiveStepIndex(0);
+    setCurrentPresetId(preset.id);
+  };
+
+  const handleSaveCurrentAsPreset = (name: string) => {
+    const newPreset: PresetItem = {
+      id: `preset_custom_${Date.now()}`,
+      name,
+      steps: steps.map((s) => ({ ...s })),
+    };
+    const updatedCustom = [...(config.customPresets || []), newPreset];
+    const newConfig = { ...config, customPresets: updatedCustom };
+    setConfig(newConfig);
+    invoke('save_config', { config: newConfig }).catch(console.error);
+    setCurrentPresetId(newPreset.id);
+    showToast(`✅ ${t(config.language, 'presetSaved', { name })}`);
+  };
+
+  const handleDeleteCustomPreset = (presetId: string) => {
+    const updatedCustom = (config.customPresets || []).filter((p) => p.id !== presetId);
+    const newConfig = { ...config, customPresets: updatedCustom };
+    setConfig(newConfig);
+    invoke('save_config', { config: newConfig }).catch(console.error);
+    if (currentPresetId === presetId) {
+      setCurrentPresetId(null);
+    }
+  };
+
+  // 6. Compute real-time rename preview and conflicts via pipeline
+  const { previews, regexError } = useMemo(() => {
+    return computePipelinePreviews(files, selectedIds, steps);
+  }, [files, selectedIds, steps]);
 
   const conflicts = useMemo(() => {
     return previews.filter((p) => p.conflictReason);
@@ -191,14 +288,14 @@ export function App() {
   }, [previews]);
 
   const hasSequenceTokens = useMemo(() => {
-    return /\$N|\$n/i.test(renameTemplate);
-  }, [renameTemplate]);
+    return /\$N|\$n/i.test(currentStep.renameTemplate);
+  }, [currentStep.renameTemplate]);
 
   // Insert token at cursor position
   const insertToken = (token: string) => {
     const input = renameInputRef.current;
     if (!input) {
-      setRenameTemplate((prev) => prev + token);
+      updateCurrentStep({ renameTemplate: currentStep.renameTemplate + token });
       return;
     }
 
@@ -207,7 +304,7 @@ export function App() {
     const val = input.value;
     const nextVal = val.substring(0, start) + token + val.substring(end);
 
-    setRenameTemplate(nextVal);
+    updateCurrentStep({ renameTemplate: nextVal });
 
     setTimeout(() => {
       input.focus();
@@ -250,16 +347,6 @@ export function App() {
     setSelectedIds(new Set());
     setLastRenameHistory(null);
   };
-
-  const showToast = useCallback((message: string, canUndo: boolean = false, durationMs: number = 4000) => {
-    if (toastTimeoutRef.current) {
-      clearTimeout(toastTimeoutRef.current);
-    }
-    setToastState({ message, canUndo });
-    toastTimeoutRef.current = window.setTimeout(() => {
-      setToastState(null);
-    }, durationMs);
-  }, []);
 
   // Execute batch rename
   const handleRename = async () => {
@@ -474,6 +561,21 @@ export function App() {
         <>
           {/* Rule Configuration Section */}
           <section className="config-section">
+            {/* Pipeline Bar: Step tabs on left + Presets dropdown on right */}
+            <PipelineBar
+              steps={steps}
+              activeStepIndex={activeStepIndex}
+              language={config.language}
+              customPresets={config.customPresets || []}
+              currentPresetId={currentPresetId}
+              onSelectStep={setActiveStepIndex}
+              onAddStep={handleAddStep}
+              onRemoveStep={handleRemoveStep}
+              onSelectPreset={handleSelectPreset}
+              onSaveCurrentAsPreset={handleSaveCurrentAsPreset}
+              onDeleteCustomPreset={handleDeleteCustomPreset}
+            />
+
             <div className="field-group">
               <label className="field-label">{t(config.language, 'matchLabel')}</label>
               <div className="input-with-action">
@@ -481,13 +583,13 @@ export function App() {
                   type="text"
                   className={`text-input ${regexError ? 'error' : ''}`}
                   placeholder={t(config.language, 'matchPlaceholder')}
-                  value={matchPattern}
-                  onChange={(e) => setMatchPattern(e.target.value)}
+                  value={currentStep.matchPattern}
+                  onChange={(e) => updateCurrentStep({ matchPattern: e.target.value })}
                 />
                 <button
                   type="button"
-                  className={`regex-toggle-btn ${isRegex ? 'active' : ''}`}
-                  onClick={() => setIsRegex(!isRegex)}
+                  className={`regex-toggle-btn ${currentStep.isRegex ? 'active' : ''}`}
+                  onClick={() => updateCurrentStep({ isRegex: !currentStep.isRegex })}
                   title={t(config.language, 'regexTooltip')}
                 >
                   .*
@@ -502,8 +604,8 @@ export function App() {
                 type="text"
                 className="text-input"
                 placeholder={t(config.language, 'renameToPlaceholder')}
-                value={renameTemplate}
-                onChange={(e) => setRenameTemplate(e.target.value)}
+                value={currentStep.renameTemplate}
+                onChange={(e) => updateCurrentStep({ renameTemplate: e.target.value })}
               />
             </div>
 
@@ -552,29 +654,29 @@ export function App() {
               <div className="segmented-case">
                 <button
                   type="button"
-                  className={`segmented-btn ${caseMode === 'none' ? 'active' : ''}`}
-                  onClick={() => setCaseMode('none')}
+                  className={`segmented-btn ${currentStep.caseMode === 'none' ? 'active' : ''}`}
+                  onClick={() => updateCurrentStep({ caseMode: 'none' })}
                 >
                   {t(config.language, 'caseNone')}
                 </button>
                 <button
                   type="button"
-                  className={`segmented-btn ${caseMode === 'upper' ? 'active' : ''}`}
-                  onClick={() => setCaseMode('upper')}
+                  className={`segmented-btn ${currentStep.caseMode === 'upper' ? 'active' : ''}`}
+                  onClick={() => updateCurrentStep({ caseMode: 'upper' })}
                 >
                   {t(config.language, 'caseUpper')}
                 </button>
                 <button
                   type="button"
-                  className={`segmented-btn ${caseMode === 'lower' ? 'active' : ''}`}
-                  onClick={() => setCaseMode('lower')}
+                  className={`segmented-btn ${currentStep.caseMode === 'lower' ? 'active' : ''}`}
+                  onClick={() => updateCurrentStep({ caseMode: 'lower' })}
                 >
                   {t(config.language, 'caseLower')}
                 </button>
                 <button
                   type="button"
-                  className={`segmented-btn ${caseMode === 'title' ? 'active' : ''}`}
-                  onClick={() => setCaseMode('title')}
+                  className={`segmented-btn ${currentStep.caseMode === 'title' ? 'active' : ''}`}
+                  onClick={() => updateCurrentStep({ caseMode: 'title' })}
                 >
                   {t(config.language, 'caseTitle')}
                 </button>
@@ -593,7 +695,7 @@ export function App() {
                           <button
                             type="button"
                             className="stepper-btn"
-                            onClick={() => setStartFrom((v) => v - 1)}
+                            onClick={() => updateCurrentStep({ startFrom: currentStep.startFrom - 1 })}
                             title="Decrease"
                           >
                             <Minus size={13} strokeWidth={2.4} />
@@ -601,13 +703,13 @@ export function App() {
                           <input
                             type="number"
                             className="stepper-input"
-                            value={startFrom}
-                            onChange={(e) => setStartFrom(parseInt(e.target.value, 10) || 0)}
+                            value={currentStep.startFrom}
+                            onChange={(e) => updateCurrentStep({ startFrom: parseInt(e.target.value, 10) || 0 })}
                           />
                           <button
                             type="button"
                             className="stepper-btn"
-                            onClick={() => setStartFrom((v) => v + 1)}
+                            onClick={() => updateCurrentStep({ startFrom: currentStep.startFrom + 1 })}
                             title="Increase"
                           >
                             <Plus size={13} strokeWidth={2.4} />
@@ -621,7 +723,7 @@ export function App() {
                           <button
                             type="button"
                             className="stepper-btn"
-                            onClick={() => setStep((v) => Math.max(1, v - 1))}
+                            onClick={() => updateCurrentStep({ step: Math.max(1, currentStep.step - 1) })}
                             title="Decrease"
                           >
                             <Minus size={13} strokeWidth={2.4} />
@@ -630,13 +732,13 @@ export function App() {
                             type="number"
                             className="stepper-input"
                             min="1"
-                            value={step}
-                            onChange={(e) => setStep(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                            value={currentStep.step}
+                            onChange={(e) => updateCurrentStep({ step: Math.max(1, parseInt(e.target.value, 10) || 1) })}
                           />
                           <button
                             type="button"
                             className="stepper-btn"
-                            onClick={() => setStep((v) => v + 1)}
+                            onClick={() => updateCurrentStep({ step: currentStep.step + 1 })}
                             title="Increase"
                           >
                             <Plus size={13} strokeWidth={2.4} />

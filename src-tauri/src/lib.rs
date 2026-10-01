@@ -44,9 +44,12 @@ pub struct BatchRenameResult {
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct AppConfig {
     pub language: String,
     pub theme: String,
+    #[serde(default)]
+    pub custom_presets: Vec<serde_json::Value>,
 }
 
 impl Default for AppConfig {
@@ -54,6 +57,7 @@ impl Default for AppConfig {
         Self {
             language: "zh-TW".to_string(),
             theme: "system".to_string(),
+            custom_presets: Vec::new(),
         }
     }
 }

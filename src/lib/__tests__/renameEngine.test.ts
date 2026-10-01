@@ -3,6 +3,7 @@ import {
   evaluateTemplate,
   computeDiffSegments,
   computeRenamePreviews,
+  computePipelinePreviews,
   formatDate,
   applyCaseMode,
 } from '../renameEngine';
@@ -192,4 +193,73 @@ describe('computeRenamePreviews', () => {
 
     expect(previews[0].conflictReason).toContain('包含不合法字元');
   });
+
+  it('chains multiple pipeline steps sequentially', () => {
+    const files: FileItem[] = [
+      {
+        id: '1',
+        path: 'C:/photos/IMG_001.JPG',
+        parent_dir: 'C:/photos',
+        original_name: 'IMG_001.JPG',
+        stem: 'IMG_001',
+        extension: '.JPG',
+        is_dir: false,
+        size: 100,
+        modified_timestamp: 1774953600,
+      },
+      {
+        id: '2',
+        path: 'C:/photos/IMG_002.JPG',
+        parent_dir: 'C:/photos',
+        original_name: 'IMG_002.JPG',
+        stem: 'IMG_002',
+        extension: '.JPG',
+        is_dir: false,
+        size: 100,
+        modified_timestamp: 1774953600,
+      },
+    ];
+
+    const selectedIds = new Set(['1', '2']);
+
+    // Step 1: Replace 'IMG_' with 'photo_'
+    // Step 2: Append sequence '_$NN'
+    // Step 3: Convert case to upper
+    const steps = [
+      {
+        matchPattern: 'IMG_',
+        isRegex: false,
+        renameTemplate: 'photo_',
+        startFrom: 1,
+        step: 1,
+        caseMode: 'none' as const,
+      },
+      {
+        matchPattern: '',
+        isRegex: false,
+        renameTemplate: '$name_$NN',
+        startFrom: 10,
+        step: 5,
+        caseMode: 'none' as const,
+      },
+      {
+        matchPattern: '',
+        isRegex: false,
+        renameTemplate: '$name',
+        startFrom: 1,
+        step: 1,
+        caseMode: 'upper' as const,
+      },
+    ];
+
+    const { previews } = computePipelinePreviews(files, selectedIds, steps);
+
+    // Step 1: photo_001 -> Step 2: photo_001_10 -> Step 3: PHOTO_001_10.JPG
+    expect(previews[0].newName).toBe('PHOTO_001_10.JPG');
+    // Step 1: photo_002 -> Step 2: photo_002_15 -> Step 3: PHOTO_002_15.JPG
+    expect(previews[1].newName).toBe('PHOTO_002_15.JPG');
+    expect(previews[0].hasChanged).toBe(true);
+    expect(previews[0].conflictReason).toBeUndefined();
+  });
 });
+

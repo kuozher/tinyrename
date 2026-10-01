@@ -985,3 +985,380 @@ body {
   from { opacity: 0; transform: scale(0.96) translateY(6px); }
   to { opacity: 1; transform: scale(1) translateY(0); }
 }
+
+/* ==========================================================================
+   Phase 3: Pipeline Bar & Presets Dropdown Styles
+   ========================================================================== */
+
+.pipeline-bar-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-color);
+  height: 36px;
+  min-height: 36px;
+  position: relative;
+}
+
+.pipeline-scroll-area {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  min-width: 0;
+  mask-image: linear-gradient(to right, black 85%, transparent 100%);
+}
+
+.pipeline-scroll-area::-webkit-scrollbar {
+  display: none;
+}
+
+.pipeline-steps-track {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.pipeline-arrow-separator {
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  opacity: 0.6;
+}
+
+.pipeline-step-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  height: 26px;
+  background: var(--bg-chip);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  max-width: 140px;
+}
+
+.pipeline-step-pill:hover {
+  border-color: var(--border-focus);
+  background: var(--bg-chip-hover);
+  color: var(--text-primary);
+}
+
+.pipeline-step-pill.active {
+  background: var(--accent-light);
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+  font-weight: 600;
+}
+
+.step-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--bg-chip-active);
+  font-size: 10px;
+  font-weight: 700;
+  color: inherit;
+}
+
+.pipeline-step-pill.active .step-badge {
+  background: var(--accent-color);
+  color: var(--accent-text);
+}
+
+.step-summary-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 80px;
+}
+
+.step-remove-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  opacity: 0.6;
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 0;
+  margin-left: 2px;
+}
+
+.step-remove-btn:hover {
+  opacity: 1;
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+.pipeline-add-step-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px dashed var(--border-color);
+  background: transparent;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.pipeline-add-step-btn:hover {
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+  background: var(--accent-light);
+}
+
+.pipeline-divider-vertical {
+  width: 1px;
+  height: 18px;
+  background-color: var(--border-color);
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+.pipeline-docked-right {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+/* Presets Dropdown */
+.preset-dropdown-container {
+  position: relative;
+}
+
+.preset-trigger-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-input);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.preset-trigger-btn:hover {
+  background: var(--bg-chip-hover);
+  border-color: var(--border-focus);
+  color: var(--text-primary);
+}
+
+.preset-trigger-btn.active {
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+}
+
+.preset-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 250px;
+  max-height: 380px;
+  overflow-y: auto;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: var(--shadow-md);
+  z-index: 80;
+  padding: 6px;
+  animation: popIn 0.15s ease;
+}
+
+.preset-section-header {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 4px 8px 2px;
+  letter-spacing: 0.5px;
+}
+
+.preset-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.preset-item-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 5px 8px;
+  border: none;
+  background: transparent;
+  border-radius: 5px;
+  font-size: 12px;
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.12s ease;
+}
+
+.preset-item-btn:hover {
+  background: var(--bg-chip-hover);
+}
+
+.preset-item-btn.selected {
+  color: var(--accent-color);
+  font-weight: 600;
+  background: var(--accent-light);
+}
+
+.preset-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.preset-check-icon {
+  color: var(--accent-color);
+  margin-left: 6px;
+  flex-shrink: 0;
+}
+
+.preset-item-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.preset-delete-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: all 0.15s ease;
+}
+
+.preset-delete-btn:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+  opacity: 1;
+}
+
+.preset-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: 6px 0;
+}
+
+.preset-empty {
+  padding: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+  font-style: italic;
+}
+
+.preset-save-trigger-btn {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  background: transparent;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--accent-color);
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.preset-save-trigger-btn:hover {
+  background: var(--accent-light);
+}
+
+.preset-save-form {
+  padding: 4px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.preset-save-input {
+  width: 100%;
+  padding: 5px 8px;
+  font-size: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.preset-save-input:focus {
+  border-color: var(--border-focus);
+}
+
+.preset-save-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.preset-cancel-btn {
+  padding: 3px 8px;
+  border: 1px solid var(--border-color);
+  background: transparent;
+  border-radius: 4px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.preset-confirm-btn {
+  padding: 3px 10px;
+  border: none;
+  background: var(--accent-color);
+  color: var(--accent-text);
+  border-radius: 4px;
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.preset-confirm-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+

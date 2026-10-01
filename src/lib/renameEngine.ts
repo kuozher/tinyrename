@@ -164,59 +164,144 @@ export function computeDiffSegments(oldName: string, newName: string): DiffSegme
 /**
  * Computes rename preview for all files given the current options.
  */
-export function computeRenamePreviews(
+/**
+ * Computes rename preview for all files across multiple pipeline steps.
+ */
+export function computePipelinePreviews(
   files: FileItem[],
   selectedIds: Set<string>,
-  options: RenameEngineOptions
+  steps: RenameEngineOptions[]
 ): { previews: RenamePreviewItem[]; regexError?: string } {
-  const { matchPattern, isRegex, renameTemplate, startFrom, step, caseMode = 'none' } = options;
-  const hasMatch = matchPattern.trim().length > 0;
-  const hasTemplate = renameTemplate.length > 0;
-  const hasCase = caseMode !== 'none';
+  let firstRegexError: string | undefined;
 
-  let regex: RegExp | null = null;
-  let regexError: string | undefined;
+  // Stems tracked across steps
+  const currentStems: string[] = files.map((f) => f.stem);
 
-  if (hasMatch && isRegex) {
-    try {
-      regex = new RegExp(matchPattern, 'gi');
-    } catch (e: any) {
-      regexError = e.message || 'Invalid regular expression';
-    }
-  }
+  for (const stepOpt of steps) {
+    const {
+      matchPattern = '',
+      isRegex = false,
+      renameTemplate = '$name',
+      startFrom = 1,
+      step = 1,
+      caseMode = 'none',
+    } = stepOpt;
 
-  // 1. Identify which items match
-  const matchFlags: boolean[] = [];
-  let totalMatching = 0;
+    const hasMatch = matchPattern.trim().length > 0;
+    const hasTemplate = renameTemplate.length > 0;
+    const hasCase = caseMode !== 'none';
 
-  for (const file of files) {
-    const isSelected = selectedIds.has(file.id);
-    if (!isSelected) {
-      matchFlags.push(false);
+    // If step does nothing, skip
+    if (!hasMatch && !hasTemplate && !hasCase) {
       continue;
     }
 
-    if (!hasMatch) {
-      matchFlags.push(true);
-      totalMatching++;
-    } else if (isRegex) {
-      if (regex) {
-        regex.lastIndex = 0;
-        const matches = regex.test(file.stem);
+    let regex: RegExp | null = null;
+    if (hasMatch && isRegex) {
+      try {
+        regex = new RegExp(matchPattern, 'gi');
+      } catch (e: any) {
+        if (!firstRegexError) {
+          firstRegexError = e.message || 'Invalid regular expression';
+        }
+      }
+    }
+
+    // 1. Identify matches in current step
+    const matchFlags: boolean[] = [];
+    let totalMatching = 0;
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const isSelected = selectedIds.has(file.id);
+      if (!isSelected) {
+        matchFlags.push(false);
+        continue;
+      }
+
+      const stem = currentStems[i];
+      if (!hasMatch) {
+        matchFlags.push(true);
+        totalMatching++;
+      } else if (isRegex) {
+        if (regex) {
+          regex.lastIndex = 0;
+          const matches = regex.test(stem);
+          matchFlags.push(matches);
+          if (matches) totalMatching++;
+        } else {
+          matchFlags.push(false);
+        }
+      } else {
+        const matches = stem.toLowerCase().includes(matchPattern.toLowerCase());
         matchFlags.push(matches);
         if (matches) totalMatching++;
-      } else {
-        matchFlags.push(false);
       }
-    } else {
-      const matches = file.stem.toLowerCase().includes(matchPattern.toLowerCase());
-      matchFlags.push(matches);
-      if (matches) totalMatching++;
+    }
+
+    // 2. Transform matching stems
+    let matchIndex = 0;
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const isSelected = selectedIds.has(file.id);
+      const isMatch = matchFlags[i];
+
+      if (!isSelected || !isMatch) {
+        continue;
+      }
+
+      let stem = currentStems[i];
+
+      if (!hasMatch) {
+        // Entire stem is replaced by template
+        stem = evaluateTemplate(
+          renameTemplate,
+          stem,
+          matchIndex,
+          totalMatching,
+          startFrom,
+          step,
+          file.modified_timestamp
+        );
+      } else if (isRegex && regex) {
+        // Regex replace
+        const replacement = evaluateTemplate(
+          renameTemplate,
+          stem,
+          matchIndex,
+          totalMatching,
+          startFrom,
+          step,
+          file.modified_timestamp
+        );
+        regex.lastIndex = 0;
+        stem = stem.replace(regex, replacement);
+      } else {
+        // Substring replace
+        const replacement = evaluateTemplate(
+          renameTemplate,
+          stem,
+          matchIndex,
+          totalMatching,
+          startFrom,
+          step,
+          file.modified_timestamp
+        );
+        const searchPattern = matchPattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const textRegex = new RegExp(searchPattern, 'gi');
+        stem = stem.replace(textRegex, replacement);
+      }
+
+      if (hasCase) {
+        stem = applyCaseMode(stem, caseMode);
+      }
+
+      currentStems[i] = stem;
+      matchIndex++;
     }
   }
 
-  // 2. Compute new stems and names
-  let matchIndex = 0;
+  // 3. Build previews & diff against original_name
   const rawPreviews: Array<{
     file: FileItem;
     selected: boolean;
@@ -231,70 +316,17 @@ export function computeRenamePreviews(
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
     const isSelected = selectedIds.has(file.id);
-    const isMatch = matchFlags[i];
-
-    let newStem = file.stem;
-
-    if (isSelected && isMatch && (hasTemplate || hasMatch || hasCase)) {
-      if (!hasMatch) {
-        // Entire stem is replaced by template
-        newStem = evaluateTemplate(
-          renameTemplate,
-          file.stem,
-          matchIndex,
-          totalMatching,
-          startFrom,
-          step,
-          file.modified_timestamp
-        );
-      } else if (isRegex && regex) {
-        // Regex replace
-        const replacement = evaluateTemplate(
-          renameTemplate,
-          file.stem,
-          matchIndex,
-          totalMatching,
-          startFrom,
-          step,
-          file.modified_timestamp
-        );
-        regex.lastIndex = 0;
-        newStem = file.stem.replace(regex, replacement);
-      } else {
-        // Substring replace
-        const replacement = evaluateTemplate(
-          renameTemplate,
-          file.stem,
-          matchIndex,
-          totalMatching,
-          startFrom,
-          step,
-          file.modified_timestamp
-        );
-        const searchPattern = matchPattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const textRegex = new RegExp(searchPattern, 'gi');
-        newStem = file.stem.replace(textRegex, replacement);
-      }
-
-      // Apply case transformation
-      if (hasCase) {
-        newStem = applyCaseMode(newStem, caseMode);
-      }
-
-      matchIndex++;
-    }
-
+    const newStem = currentStems[i];
     const newName = `${newStem}${file.extension}`;
     const sep = file.path.includes('/') ? '/' : '\\';
     const newPath = file.parent_dir ? `${file.parent_dir}${sep}${newName}` : newName;
     const hasChanged = newName !== file.original_name;
-
     const diffSegments = computeDiffSegments(file.original_name, newName);
 
     rawPreviews.push({
       file,
       selected: isSelected,
-      isMatch,
+      isMatch: isSelected,
       newStem,
       newName,
       newPath,
@@ -303,7 +335,7 @@ export function computeRenamePreviews(
     });
   }
 
-  // 3. Conflict detection
+  // 4. Conflict detection
   const pathCounts = new Map<string, number>();
   for (const item of rawPreviews) {
     if (item.selected) {
@@ -334,5 +366,16 @@ export function computeRenamePreviews(
     };
   });
 
-  return { previews, regexError };
+  return { previews, regexError: firstRegexError };
+}
+
+/**
+ * Computes rename preview for all files given a single set of options.
+ */
+export function computeRenamePreviews(
+  files: FileItem[],
+  selectedIds: Set<string>,
+  options: RenameEngineOptions
+): { previews: RenamePreviewItem[]; regexError?: string } {
+  return computePipelinePreviews(files, selectedIds, [options]);
 }

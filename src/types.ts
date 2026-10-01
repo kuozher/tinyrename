@@ -55,7 +55,26 @@ export interface RenamePreviewItem {
 export type Language = 'zh-TW' | 'en';
 export type Theme = 'system' | 'light' | 'dark';
 
+export interface RuleStep {
+  id: string;
+  name?: string;
+  matchPattern: string;
+  isRegex: boolean;
+  renameTemplate: string;
+  startFrom: number;
+  step: number;
+  caseMode: CaseMode;
+}
+
+export interface PresetItem {
+  id: string;
+  name: string;
+  isBuiltin?: boolean;
+  steps: RuleStep[];
+}
+
 export interface AppConfig {
   language: Language;
   theme: Theme;
+  customPresets?: PresetItem[];
 }
